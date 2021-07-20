@@ -14,16 +14,34 @@ struct Camera {
   vec3 rd; // ray direction
 };
 
+float capsuleSDF(vec3 p, vec3 a, vec3 b, float r) {
+  vec3 ab = b - a;
+  vec3 ap = p - a;
+
+  float t = dot(ab, ap) / dot(ab, ab);
+  t = clamp(t, 0., 1.);
+  vec3 c = a + t * ab;
+  return length(c - p) - r;
+}
+
 float sphereSDF(vec3 p, vec4 sphere) {
   return length(p - sphere.xyz) - sphere.w;
 }
 
+float torusSDF(vec3 p, vec2 t) {
+  vec2 q = vec2(length(p.xz) - t.x, p.y);
+  return length(q) - t.y;
+}
+
 float sceneSDF(vec3 p) {
-  vec4 sphere = vec4(0, 2, -5, 1);
-  float dSphere = sphereSDF(p, sphere);
+
+  float dSphere = sphereSDF(p, vec4(0, 1, -5, 1));
   float dPlane = p.y;
-  float dS = min(dSphere, dPlane);
-  return dS;
+  float dCapsule = capsuleSDF(p, vec3(2, 3, -5), vec3(2, 1, -5), .5);
+  float dTorus = torusSDF(p - vec3(0, 1, -5), vec2(1.2, 0.2));
+
+  float dScene = min(min(min(dPlane, dCapsule), dSphere), dTorus);
+  return dScene;
 }
 
 float rayMarch(vec3 ro, vec3 rd) {
@@ -59,14 +77,21 @@ vec3 lightingCalculation(vec3 p) {
   vec3 L = normalize(lightPos - p);
   vec3 N = getNormal(p);
 
-  float diffColor = dot(N, L);
+  float diffColor = clamp(dot(N, L), 0.0, 1.0);
+
+  float d = rayMarch(p + N * SURFACE_DIST,
+                     L); // ray march in the direction of the light
+  if (d < length(lightPos - p)) {
+    diffColor *= 0.1;
+  }
+
   return vec3(diffColor);
 }
 
 void main() {
   vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / u_resolution.y;
 
-  Camera camera = Camera(vec3(0, 1, 1), normalize(vec3(uv.x, uv.y, -1)));
+  Camera camera = Camera(vec3(0, 2, 1), normalize(vec3(uv.x, uv.y, -1)));
 
   float d = rayMarch(camera.ro, camera.rd); // nearest distance to the scene
 
