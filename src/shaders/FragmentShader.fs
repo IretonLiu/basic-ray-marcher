@@ -6,6 +6,7 @@
 // Interpolated values from the vertex shaders
 // in vec3 fragmentColor;
 uniform ivec2 u_resolution;
+uniform float u_time;
 
 out vec3 color;
 
@@ -13,6 +14,24 @@ struct Camera {
   vec3 ro; // ray origin
   vec3 rd; // ray direction
 };
+
+// returns the smooth minimum of 2 values with smooth factor k
+float smoothMin(float a, float b, float k) {
+  float h = clamp(0.5 + 0.5 * (b - a) / k, 0., 1.);
+  return mix(b, a, h) - k * h * (1.0 - h);
+}
+
+mat2 rotate(float angle) {
+  float sinA = sin(angle);
+  float cosA = cos(angle);
+  return mat2(cosA, sinA, -sinA, cosA);
+}
+
+// a list of SDFs for different primitives
+float boxSDF(vec3 p, vec3 b) {
+  vec3 q = abs(p) - b;
+  return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
 
 float capsuleSDF(vec3 p, vec3 a, vec3 b, float r) {
   vec3 ab = b - a;
@@ -35,12 +54,27 @@ float torusSDF(vec3 p, vec2 t) {
 
 float sceneSDF(vec3 p) {
 
-  float dSphere = sphereSDF(p, vec4(0, 1, -5, 1));
+  float dSphere = sphereSDF(p, vec4(1, 1, -5, 1));
+
+  vec3 spherePos = vec3(3, 1.5, -7);
+  spherePos.y += sin(u_time * 2);
+
+  float dSphere2 = sphereSDF(p, vec4(spherePos, .5));
+  vec3 boxPos = p - vec3(-2, 1, -5);
+  boxPos.xz = rotate(u_time) * boxPos.xz;
+  float dBox = boxSDF(boxPos, vec3(1));
+
   float dPlane = p.y;
-  float dCapsule = capsuleSDF(p, vec3(2, 3, -5), vec3(2, 1, -5), .5);
+  float dCapsule = capsuleSDF(p, vec3(1.5, 3, -4), vec3(1.5, 1, -4), .5);
   float dTorus = torusSDF(p - vec3(0, 1, -5), vec2(1.2, 0.2));
 
-  float dScene = min(min(min(dPlane, dCapsule), dSphere), dTorus);
+  // taking max of two values will give the intersection
+  // this is because the value will only be 0(small enough)
+  // at the place where the 2 object intersect
+  float dScene = min(
+      min(smoothMin(max(-dCapsule, dSphere), smoothMin(dTorus, dBox, .2), .2),
+          dSphere2),
+      dPlane);
   return dScene;
 }
 
@@ -50,7 +84,8 @@ float rayMarch(vec3 ro, vec3 rd) {
     vec3 p = ro + dOrigin * rd; // march the point forward in the direction
 
     // get distance of  closest object in the scene to the point
-    float dScene = sceneSDF(p); // distance to scene
+    // float dScene = sceneSDF(p); // distance to scene
+    float dScene = sceneSDF(p);
     dOrigin += dScene;
 
     // we have a hit or if ray marches too far
@@ -73,13 +108,13 @@ vec3 getNormal(vec3 p) {
 }
 
 vec3 lightingCalculation(vec3 p) {
-  vec3 lightPos = vec3(0, 5, -5);
+  vec3 lightPos = vec3(0, 5, -3);
   vec3 L = normalize(lightPos - p);
   vec3 N = getNormal(p);
 
   float diffColor = clamp(dot(N, L), 0.0, 1.0);
 
-  float d = rayMarch(p + N * SURFACE_DIST,
+  float d = rayMarch(p + N * SURFACE_DIST * 2,
                      L); // ray march in the direction of the light
   if (d < length(lightPos - p)) {
     diffColor *= 0.1;
@@ -98,5 +133,6 @@ void main() {
   vec3 p = camera.ro + camera.rd * d;
 
   color = lightingCalculation(p);
+  // color = vec3(d / 20);
   // gl_FragColor = vec4(color, 1.0);
 }

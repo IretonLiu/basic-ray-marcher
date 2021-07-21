@@ -173,14 +173,17 @@ void render(PerspectiveCamera* camera, Geometry* geometry) {
     // GLuint uModelView = glGetUniformLocation(programID, "modelView");
     // GLuint uProjection = glGetUniformLocation(programID, "projection");
     GLuint uResolution = glGetUniformLocation(programID, "u_resolution");
-
+    GLuint uTime = glGetUniformLocation(programID, "u_time");
     createVAO();
     createVBOs(geometry);
+    int frameCount = 0;
     do {
+        frameCount++;
         // Clear the screen
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glfwGetWindowSize(window, &resolution[0], &resolution[1]);
         glUniform2iv(uResolution, 1, &resolution[0]);
+        glUniform1f(uTime, frameCount * 0.01);
         // Send our transformation to the currently bound shader,
         // TODO: change to work with an actual camera class
         // glUniformMatrix4fv(uModelView, 1, GL_FALSE, &camera->getModelViewMat()[0][0]);
